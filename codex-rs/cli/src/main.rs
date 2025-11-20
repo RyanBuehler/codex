@@ -26,6 +26,7 @@ use owo_colors::OwoColorize;
 use std::path::PathBuf;
 use supports_color::Stream;
 
+mod config_report;
 mod mcp_cmd;
 #[cfg(not(windows))]
 mod wsl_paths;
@@ -108,6 +109,9 @@ enum Subcommand {
     #[clap(hide = true)]
     ResponsesApiProxy(ResponsesApiProxyArgs),
 
+    /// Print the resolved configuration with source annotations.
+    Config(ConfigInspectCommand),
+
     /// Internal: relay stdio to a Unix domain socket.
     #[clap(hide = true, name = "stdio-to-uds")]
     StdioToUds(StdioToUdsCommand),
@@ -146,6 +150,17 @@ struct ResumeCommand {
 struct SandboxArgs {
     #[command(subcommand)]
     cmd: SandboxCommand,
+}
+
+#[derive(Debug, Parser)]
+struct ConfigInspectCommand {
+    /// Apply config overrides (same semantics as other Codex commands).
+    #[clap(flatten)]
+    config_overrides: CliConfigOverrides,
+
+    /// Configuration profile from config.toml to inspect.
+    #[arg(long = "profile", short = 'p')]
+    profile: Option<String>,
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -513,6 +528,13 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
                 root_config_overrides.clone(),
             );
             codex_cloud_tasks::run_main(cloud_cli, codex_linux_sandbox_exe).await?;
+        }
+        Some(Subcommand::Config(mut config_cmd)) => {
+            prepend_config_flags(
+                &mut config_cmd.config_overrides,
+                root_config_overrides.clone(),
+            );
+            config_report::print_config(config_cmd.config_overrides, config_cmd.profile).await?;
         }
         Some(Subcommand::Sandbox(sandbox_args)) => match sandbox_args.cmd {
             SandboxCommand::Macos(mut seatbelt_cli) => {

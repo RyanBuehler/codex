@@ -14,6 +14,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env::VarError;
+use std::net::SocketAddr;
+use std::net::TcpStream;
 use std::time::Duration;
 
 use crate::error::EnvVarError;
@@ -307,6 +309,26 @@ pub const DEFAULT_OLLAMA_PORT: u16 = 11434;
 
 pub const LMSTUDIO_OSS_PROVIDER_ID: &str = "lmstudio";
 pub const OLLAMA_OSS_PROVIDER_ID: &str = "ollama";
+
+/// Probe localhost for known OSS providers and return the first one that
+/// responds on its default port. LM Studio is preferred over Ollama because it
+/// exposes the Responses API surface that Codex favors.
+pub fn detect_running_oss_provider() -> Option<String> {
+    if is_local_port_open(DEFAULT_LMSTUDIO_PORT) {
+        return Some(LMSTUDIO_OSS_PROVIDER_ID.to_string());
+    }
+
+    if is_local_port_open(DEFAULT_OLLAMA_PORT) {
+        return Some(OLLAMA_OSS_PROVIDER_ID.to_string());
+    }
+
+    None
+}
+
+fn is_local_port_open(port: u16) -> bool {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    TcpStream::connect_timeout(&addr, Duration::from_millis(250)).is_ok()
+}
 
 /// Built-in default provider list.
 pub fn built_in_model_providers() -> HashMap<String, ModelProviderInfo> {

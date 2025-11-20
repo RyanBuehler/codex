@@ -29,6 +29,7 @@ use crate::model_provider_info::LMSTUDIO_OSS_PROVIDER_ID;
 use crate::model_provider_info::ModelProviderInfo;
 use crate::model_provider_info::OLLAMA_OSS_PROVIDER_ID;
 use crate::model_provider_info::built_in_model_providers;
+use crate::model_provider_info::detect_running_oss_provider;
 use crate::openai_model_info::get_model_info;
 use crate::project_doc::DEFAULT_PROJECT_DOC_FILENAME;
 use crate::project_doc::LOCAL_PROJECT_DOC_FILENAME;
@@ -64,6 +65,8 @@ pub mod types;
 pub const OPENAI_DEFAULT_MODEL: &str = "gpt-5.1-codex";
 const OPENAI_DEFAULT_REVIEW_MODEL: &str = "gpt-5.1-codex";
 pub const GPT_5_CODEX_MEDIUM_MODEL: &str = "gpt-5.1-codex";
+const DEFAULT_LMSTUDIO_MODEL: &str = "openai/gpt-oss-20b";
+const DEFAULT_OLLAMA_MODEL: &str = "gpt-oss:20b";
 
 /// Maximum number of bytes of the documentation that will be embedded. Larger
 /// files are *silently truncated* to this size so we do not take up too much of
@@ -319,6 +322,21 @@ pub async fn load_config_as_toml_with_cli_overrides(
     })?;
 
     Ok(cfg)
+}
+
+/// Load the merged TOML configuration (config.toml + managed layers + CLI
+/// overrides) without deserializing it into [`ConfigToml`]. This is useful for
+/// inspection/reporting where the presence or absence of keys matters.
+pub async fn load_raw_config_with_cli_overrides(
+    codex_home: &Path,
+    cli_overrides: Vec<(String, TomlValue)>,
+) -> std::io::Result<TomlValue> {
+    load_resolved_config(
+        codex_home,
+        cli_overrides,
+        crate::config_loader::LoaderOverrides::default(),
+    )
+    .await
 }
 
 async fn load_resolved_config(
@@ -1062,13 +1080,18 @@ impl Config {
 
         let mut model_providers = built_in_model_providers();
         // Merge user-defined providers into the built-in list.
-        for (key, provider) in cfg.model_providers.into_iter() {
-            model_providers.entry(key).or_insert(provider);
+        for (key, provider) in cfg.model_providers.iter() {
+            model_providers
+                .entry(key.clone())
+                .or_insert_with(|| provider.clone());
         }
 
+        let detected_oss_provider = detect_running_oss_provider();
         let model_provider_id = model_provider
-            .or(config_profile.model_provider)
-            .or(cfg.model_provider)
+            .or_else(|| config_profile.model_provider.clone())
+            .or_else(|| cfg.model_provider.clone())
+            .or_else(|| resolve_oss_provider(None, &cfg, active_profile_name.clone()))
+            .or(detected_oss_provider.clone())
             .unwrap_or_else(|| "openai".to_string());
         let model_provider = model_providers
             .get(&model_provider_id)
@@ -1103,9 +1126,16 @@ impl Config {
 
         let forced_login_method = cfg.forced_login_method;
 
+        let provider_default_model = match model_provider_id.as_str() {
+            LMSTUDIO_OSS_PROVIDER_ID => Some(DEFAULT_LMSTUDIO_MODEL.to_string()),
+            OLLAMA_OSS_PROVIDER_ID => Some(DEFAULT_OLLAMA_MODEL.to_string()),
+            _ => None,
+        };
+
         let model = model
             .or(config_profile.model)
             .or(cfg.model)
+            .or(provider_default_model)
             .unwrap_or_else(default_model);
 
         let mut model_family =
