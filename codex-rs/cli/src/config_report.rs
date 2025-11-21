@@ -3,7 +3,6 @@ use codex_core::config::Config;
 use codex_core::config::ConfigOverrides;
 use codex_core::config::find_codex_home;
 use codex_core::config::load_raw_config_with_cli_overrides;
-use codex_core::config::load_with_cli_overrides;
 use codex_core::model_provider_info::LMSTUDIO_OSS_PROVIDER_ID;
 use codex_core::model_provider_info::OLLAMA_OSS_PROVIDER_ID;
 use owo_colors::OwoColorize;
@@ -22,7 +21,7 @@ pub async fn print_config(
         .map(|(k, v)| (k, v.into()))
         .collect();
 
-    let config = load_with_cli_overrides(
+    let config = Config::load_with_cli_overrides(
         toml_overrides.clone(),
         ConfigOverrides {
             config_profile: profile.clone(),
@@ -174,7 +173,8 @@ fn resolved_oss_provider_label(raw_config: &TomlValue) -> String {
     } else {
         format!(
             "auto (checks {} then {})",
-            LMSTUDIO_OSS_PROVIDER_ID, OLLAMA_OSS_PROVIDER_ID
+            LMSTUDIO_OSS_PROVIDER_ID,
+            OLLAMA_OSS_PROVIDER_ID
         )
     }
 }

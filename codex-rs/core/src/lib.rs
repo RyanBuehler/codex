@@ -34,7 +34,7 @@ pub mod mcp;
 mod mcp_connection_manager;
 mod mcp_tool_call;
 mod message_history;
-mod model_provider_info;
+pub mod model_provider_info;
 pub mod parse_command;
 pub mod powershell;
 mod response_processing;
